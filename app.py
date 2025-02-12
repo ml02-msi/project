@@ -1,10 +1,11 @@
 # https://www.datacamp.com/tutorial/open-ai-function-calling-tutorial
 
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 import os
 import requests
+import subprocess
 
 app = FastAPI()
 
@@ -82,11 +83,12 @@ If your task involves writing a code, you can use the task_runner tool.
             }
         ],
         "tools": tools,
-        "tools:choice": "auto"
+        "tool_choice": "auto"
     }
 
     response = requests.post(url, headers=headers, json=data)
-    return response.json()
+    return response.json()['choices'][0]['message']
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
