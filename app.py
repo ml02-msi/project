@@ -15,6 +15,33 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+tools = [
+    {
+        "name": "function",
+        "function":{
+            "name": "script_runner",
+            "description": "Install a package and run a script from an URL with provided arguments",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "URL of the script to run"
+                    },
+                    "args": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "Arguments to pass to the script"
+                    }   
+
+                }
+            }
+        }
+    }
+]
+
 @app.get("/")
 async def root():
     return {"message": "Hello World"}
