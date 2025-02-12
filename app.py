@@ -1,3 +1,6 @@
+# https://www.datacamp.com/tutorial/open-ai-function-calling-tutorial
+
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -18,8 +21,7 @@ async def root():
 
 @app.get("/read")
 def read_file(path:str):
-
-
+    return {"path": path}
 
 if __name__ == "__main__":
     import uvicorn
