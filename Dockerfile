@@ -37,7 +37,12 @@ FROM python:3.10-slim AS base
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl ca-certificates && rm -rf /var/lib/apt/lists/*
-RUN pip install --no-cache-dir fastapi numpy pandas sentence-transformers scikit-learn requests python-dateutil
+# RUN pip install --no-cache-dir fastapi numpy pandas sentence-transformers \
+#     scikit-learn requests python-dateutil python-dotenv uvicorn
+
+RUN pip install --no-cache-dir fastapi numpy pandas \
+    scikit-learn requests python-dateutil python-dotenv uvicorn
+
 # # Download the latest installer
 ADD https://astral.sh/uv/install.sh /uv-installer.sh
 

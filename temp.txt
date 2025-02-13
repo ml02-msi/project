@@ -1,4 +1,5 @@
 # PODMAN
+# https://chatgpt.com/c/67ae4cac-16a4-8013-854b-cf386b382bc0
 
 podman login docker.io
 
@@ -15,5 +16,7 @@ podman run -p 5000:8000 image_id # Forwarding 8000 port contents from cointainge
 podman ps
 
 podman start cointainer_id
+
+podman run -e AIPROXY_TOKEN=$AIPROXY_TOKEN -p 8000:8000 image_id
 
 podman rmi -f image_id
