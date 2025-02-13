@@ -1,0 +1,17 @@
+# PODMAN
+
+podman login docker.io
+
+podman build -t llm_app .
+
+podman exec -it <image_id>
+
+podman images
+
+podman run image_id
+
+podman run -p 5000:8000 image_id # Forwarding 8000 port contents from cointainger to local machine @5000 port
+
+podman ps
+
+podman start cointainer_id
