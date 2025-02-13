@@ -8,9 +8,12 @@ import requests
 import subprocess
 import json
 from dotenv import load_dotenv
+from datetime import datetime
 from dateutil import parser
 from typing import Dict, Any
 import base64
+import numpy as np
+import pandas as pd
 
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -56,7 +59,7 @@ SCRIPT_RUNNER = {
     }
 
 # Tool for A2
-FORMAY_FILE = {
+FORMAT_FILE = {
         "type": "function",
         "function": {
             "name": "format_file",
@@ -76,6 +79,35 @@ FORMAY_FILE = {
             }
         }
     }
+
+# Tool for A3
+COUNT_DAYS = {
+        "type": "function",
+        "function": {
+            "name": "count_days",
+            "description": "Count the number of a specific weekday in a list of dates and write the count to a file.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "day_of_week": {
+                        "type": "string",
+                        "description": "Day of week to be counted, e.g. wednesday",
+                    },
+                    "input_file_path": {
+                        "type": "string",
+                        "description": "Path to the input file containing a list of dates",
+                    },
+                    "output_file_path": {
+                        "type": "string",
+                        "description": "Path to the output file where the number of that specific weekday will be written.",
+                    },
+                },
+                "required": ["day_of_week", "input_file_path", "output_file_path"],
+                "additionalProperties": False,
+            },            
+            "strict": True
+        }
+}
 
 # Tool for A4
 SORT_CONTACTS = {
@@ -124,7 +156,7 @@ IMAGE_EXTRACT = {
     },
 }
 
-# Tool for A9 (to-do)
+# Tool for A9
 SIMILARITY_EXTRACT = {
     "type": "function",
     "function": {
@@ -133,17 +165,75 @@ SIMILARITY_EXTRACT = {
         "parameters": {
             "type": "object",
             "properties": {
+                "input_location": {
+                    "type": "string", 
+                    "description": "The relative input image location on user's device"
+                },
+                "output_location": {
+                    "type": "string", 
+                    "description": "The relative output location on user's device"
+                },
             },
-            "required": [],
+            "required": ["input_location","output_location"],
             "additionalProperties": False,
         },
         "strict": True,
     },
 }
 
-tools = [SCRIPT_RUNNER, FORMAY_FILE, SORT_CONTACTS]
+tools = [SCRIPT_RUNNER, FORMAT_FILE, COUNT_DAYS, SORT_CONTACTS, IMAGE_EXTRACT, SIMILARITY_EXTRACT]
+
+# Function to count number of days of a particular day from a text file containing a list of dates
+def count_days(date: str, input_location:str, output_location:str):
+    # Define possible date formats
+    date_formats = [
+        "%b %d, %Y",        # Apr 04, 2006
+        "%Y-%m-%d",         # 2017-01-09
+        "%d-%b-%Y",         # 17-Dec-2001
+        "%Y/%m/%d",         # 2006/04/12
+        "%Y/%m/%d %H:%M:%S" # 2006/04/12 21:29:21 (new format added)
+    ]
+    if date.lower() == "monday":
+        day = 0
+    elif date.lower() == "tuesday":
+        day = 1
+    elif date.lower() == "wednesday":
+        day = 2
+    elif date.lower() == "thursday":
+        day = 3
+    elif date.lower() == "friday":
+        day = 4
+    elif date.lower() == "saturday":
+        day = 5
+    elif date.lower() == "sunday":
+        day = 6
+    else:
+        raise HTTPException(status_code=400, detail="Invalid day of the week")
+
+    count = 0
+    with open(input_location, "r") as file:
+        for line in file:
+            date_str = line.strip()
+            matched = False  # Track if the date matched a format
+            for fmt in date_formats:
+                try:
+                    parsed_date = datetime.strptime(date_str, fmt)
+                    if parsed_date.weekday() == day:
+                        count += 1
+                    matched = True
+                    break  # Stop checking once a format matches
+                except ValueError:
+                    pass  # Try the next format
+            if not matched:
+                raise HTTPException(status_code=400, detail=f"Invalid date format: {date_str}")
+    with open(output_location, "w") as file:
+        file.write(str(count))
+    file.close()
+    return {"status": "Successfully Created", "output_file destination": output_location}
+    
 
 # Below is the code for OpenAI - Text Extraction from image
+# https://colab.research.google.com/drive/1bK0b1XMrZWImtw01T1w9NGraDkiVi8mS#scrollTo=RR_q1bi8kfHH
 def get_completions_image(input_location:str, output_location:str):
     with open(input_location,"rb") as f:
         img_data = f.read()
@@ -181,6 +271,22 @@ def get_completions_image(input_location:str, output_location:str):
     f.close()
     return {"status": "Successfully Created", "output_file destination": output_location}
 
+def get_similar_comments(input_location:str, output_location:str):
+    with open(input_location,"r") as f:
+        comments = [i.strip() for i in f.readlines()]
+        f.close()
+    model = SentenceTransformer("all-MiniLM-L6-v2")
+    embeddings = model.encode(comments)
+    similarity_mat = cosine_similarity(embeddings)
+    np.fill_diagonal(similarity_mat,0)
+    max_index = int(np.argmax(similarity_mat))
+    i, j = max_index//len(comments), max_index%len(comments)
+    with open(output_location,"w") as g:
+        g.write(comments[i])
+        g.write("\n")
+        g.write(comments[j])
+        g.close()
+    return {"status": "Successfully Created", "output_file destination": output_location}
 
 @app.get("/")
 async def root():
@@ -218,7 +324,8 @@ def task_runner(task:str):
 - Use script_runner for installing packages and running scripts from URLs
 - Use format_file for formatting files with Prettier
 - Use task_runner for tasks involving writing a code
-- Use sort_contacts for sorting contacts in a JSON file by last name and then by first name"""
+- Use sort_contacts for sorting contacts in a JSON file by last name and then by first name
+- Use get_completions_image to run the get_completions_image function and save output to a file"""
             }
         ],
         "tools": tools,
@@ -236,7 +343,7 @@ def task_runner(task:str):
     try:
         res_json = response.json()
         message = res_json['choices'][0]['message']
-        tool_calls = message.get('tool_calls', [])
+        # tool_calls = message.get('tool_calls', [])
     except (KeyError, IndexError) as e:
         raise HTTPException(status_code=500, detail=f"Error parsing response: {e}\nResponse: {res_json}")
     
@@ -269,21 +376,43 @@ def task_runner(task:str):
             result = subprocess.run(command, capture_output=True, text=True, check=True)
             return {"output": result.stdout, "error": result.stderr}
 
+        # For A3
+        elif function_name == "count_days":
+            arguments = message['tool_calls'][0]['function']['arguments']
+            start_date = arguments['day of week']
+            input_file_path = arguments['input_file_path']
+            output_file_path = arguments['output_file_path']
+            return count_days(start_date, input_file_path, output_file_path)
+
         # For A4
         elif function_name == "sort_contacts":
             try:
-                with open("/data/contacts.json", "r") as f:
+                with open(input_file_path, "r") as f:
                     contacts = json.load(f)
                 sorted_contacts = sorted(
                     contacts, key=lambda contact: (contact.get("last_name", ""), contact.get("first_name", ""))
                 )
-                with open("/data/contacts-sorted.json", "w") as f:
+                with open(output_file_path, "w") as f:
                     json.dump(sorted_contacts, f, indent=2)
                 return {"message": "Contacts sorted successfully", "sorted_count": len(sorted_contacts)}
             except FileNotFoundError:
                 raise HTTPException(status_code=404, detail="Contacts file not found")
             except Exception as ex:
                 raise HTTPException(status_code=500, detail=f"Error sorting contacts: {ex}")
+
+        # For A8
+        elif function_name == "get_completions_image":
+            arguments = message['tool_calls'][0]['function']['arguments']
+            input_location = arguments['input_location']
+            output_location = arguments['output_location']
+            return get_completions_image(input_location, output_location)
+
+        # For A9
+        elif function_name == "get_similar_comments":
+            arguments = message['tool_calls'][0]['function']['arguments']
+            input_location = arguments['input_location']
+            output_location = arguments['output_location']
+            return get_similar_comments(input_location, output_location)
 
         else:
             raise HTTPException(status_code=500, detail=f"Unknown function: {function_name}")
