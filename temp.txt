@@ -15,3 +15,5 @@ podman run -p 5000:8000 image_id # Forwarding 8000 port contents from cointainge
 podman ps
 
 podman start cointainer_id
+
+podman rmi -f image_id
