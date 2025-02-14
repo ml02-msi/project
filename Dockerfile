@@ -56,5 +56,6 @@ ENV PATH="/root/.local/bin/:$PATH"
 # Final image with app.py (uses cached dependencies)
 FROM base AS final
 WORKDIR /app
-COPY app.py /app
+RUN mkdir -p /data
+COPY app.py datagen.py evaluate.py /app/
 CMD ["uv", "run", "app.py"]
