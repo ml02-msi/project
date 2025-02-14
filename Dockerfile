@@ -41,7 +41,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 #     scikit-learn requests python-dateutil python-dotenv uvicorn
 
 RUN pip install --no-cache-dir fastapi numpy pandas \
-    scikit-learn requests python-dateutil python-dotenv uvicorn
+    scikit-learn requests python-dateutil python-dotenv uvicorn \
+    db-sqlite3 duckdb
 
 # # Download the latest installer
 ADD https://astral.sh/uv/install.sh /uv-installer.sh

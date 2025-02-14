@@ -1,5 +1,5 @@
 {
-  "id": "chatcmpl-B0ZOcc1lSFhP78b4NrTBMtfvaxQg6",
+  "id": "",
   "object": "chat.completion",
   "created": 1739475762,
   "model": "gpt-4o-mini-2024-07-18",
@@ -11,7 +11,7 @@
         "content": null,
         "tool_calls": [
           {
-            "id": "call_DZOpdqSdYYhWi5ppgusZlpFC",
+            "id": "",
             "type": "function",
             "function": {
               "name": "script_runner",
@@ -37,8 +37,8 @@
       "rejected_prediction_tokens": 0
     }
   },
-  "service_tier": "default",
-  "system_fingerprint": "fp_72ed7ab54c",
+  "service_tier": "",
+  "system_fingerprint": "",
   "monthlyCost": 0.38280504,
   "cost": 0.0008160000000000001,
   "monthlyRequests": 356

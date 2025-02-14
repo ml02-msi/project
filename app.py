@@ -14,9 +14,13 @@ from typing import Dict, Any
 import base64
 import numpy as np
 import pandas as pd
+import sqlite3, duckdb
 
-from sentence_transformers import SentenceTransformer
+from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+
+# from sentence_transformers import SentenceTransformer
+# from sklearn.metrics.pairwise import cosine_similarity
 
 load_dotenv() 
 
@@ -131,57 +135,165 @@ SORT_CONTACTS = {
         }
     }
 
+# Tool for A5
+LOGS_RECENT = {
+        "type": "function",
+        "function": {
+            "name": "logs_recent",
+            "description": "Retrieve the most recent log files from a directory and save their content to an output file.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                        "log_dir_path": {
+                            "type": "string",
+                            "pattern": r".*/logs",
+                            "default": "/data/logs"
+                        },
+                        "output_file_path": {
+                            "type": "string",
+                            "pattern": r".*/(.*\.txt)",
+                            "default": "/data/logs-recent.txt"
+                        },
+                        "num_files": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "default": 10
+                        }
+                    }, "required": ["log_dir_path", "output_file_path", "num_files"]
+                }
+            }
+        }
+
+# Tool for A6
+MARKDOWN_INDEX = {
+            "type": "function",
+            "function": {
+                "name": "markdown_index",
+                "description": "Generate an index of documents from a directory and save it as a Markdown file.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "doc_dir_path": {
+                            "type": "string",
+                            "pattern": r".*/docs",
+                            "default": "/data/docs"
+                        },
+                        "output_file_path": {
+                            "type": "string",
+                            "pattern": r".*/(.*\.md)",
+                            "default": "/data/docs/index.md"
+                        }
+                    },
+                    "required": ["doc_dir_path", "output_file_path"]
+                }
+            }
+        }
+
+# Tool or A7
+EMAIL_SENDER = {
+        "type": "function",
+        "function": {
+            "name": "email_sender",
+            "description": "Extract the sender's email address and in response return just the sender's email address",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "input_location": {
+                        "type": "string", 
+                        "description": "The relative input image location on user's device"
+                    },
+                    "output_location": {
+                        "type": "string", 
+                        "description": "The relative output location on user's device"
+                    },
+                },
+                "required": ["input_location","output_location"],
+                "additionalProperties": False,
+            },
+            "strict": True,
+        }
+    }
+
 # Tool for A8
 IMAGE_EXTRACT = {
-    "type": "function",
-    "function": {
-        "name": "get_completions_image",
-        "description": "Extract the 16-digit code from an image",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "input_location": {
-                    "type": "string", 
-                    "description": "The relative input image location on user's device"
+        "type": "function",
+        "function": {
+            "name": "get_completions_image",
+            "description": "Extract the 16-digit code from an image",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "input_location": {
+                        "type": "string", 
+                        "description": "The relative input image location on user's device"
+                    },
+                    "output_location": {
+                        "type": "string", 
+                        "description": "The relative output location on user's device"
+                    },
                 },
-                "output_location": {
-                    "type": "string", 
-                    "description": "The relative output location on user's device"
-                },
+                "required": ["input_location","output_location"],
+                "additionalProperties": False,
             },
-            "required": ["input_location","output_location"],
-            "additionalProperties": False,
+            "strict": True,
         },
-        "strict": True,
-    },
-}
+    }
 
 # Tool for A9
 SIMILARITY_EXTRACT = {
-    "type": "function",
-    "function": {
-        "name": "get_similar_comments",
-        "description": "Find two similar comments from a series of comments",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "input_location": {
-                    "type": "string", 
-                    "description": "The relative input image location on user's device"
+        "type": "function",
+        "function": {
+            "name": "get_similar_comments",
+            "description": "Find two similar comments from a series of comments",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "input_location": {
+                        "type": "string", 
+                        "description": "The relative input image location on user's device"
+                    },
+                    "output_location": {
+                        "type": "string", 
+                        "description": "The relative output location on user's device"
+                    },
                 },
-                "output_location": {
-                    "type": "string", 
-                    "description": "The relative output location on user's device"
-                },
+                "required": ["input_location","output_location"],
+                "additionalProperties": False,
             },
-            "required": ["input_location","output_location"],
-            "additionalProperties": False,
+            "strict": True,
         },
-        "strict": True,
-    },
-}
+    }
 
-tools = [SCRIPT_RUNNER, FORMAT_FILE, COUNT_DAYS, SORT_CONTACTS, IMAGE_EXTRACT, SIMILARITY_EXTRACT]
+# Tool for A10
+QUERY_SQL = {
+        "type": "function",
+        "function": {
+            "name": "query_sql",
+            "description": "Run a SQL query on a database and save the results to a text file.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "filename": {
+                        "type": "string",
+                        "pattern": r".*/(.*\.db)",
+                        "default": "/data/ticket-sales.db" 
+                    },
+                    "output_filename": {
+                        "type": "string",
+                        "pattern": r".*/(.*\.txt)",
+                        "default": "/data/ticket-sales-gold.txt"
+                    },
+                    "query": {
+                        "type": "string",
+                        "description": "Write just the SQL query to run on the database"
+                    }
+                },
+                "required": ["filename", "output_filename", "query"],
+            }
+        }
+    }
+
+tools = [SCRIPT_RUNNER, FORMAT_FILE, COUNT_DAYS, SORT_CONTACTS, LOGS_RECENT, MARKDOWN_INDEX, EMAIL_SENDER,IMAGE_EXTRACT, SIMILARITY_EXTRACT, QUERY_SQL]
 
 # Function to count number of days of a particular day from a text file containing a list of dates
 def count_days(date: str, input_location:str, output_location:str):
@@ -231,6 +343,68 @@ def count_days(date: str, input_location:str, output_location:str):
     file.close()
     return {"status": "Successfully Created", "output_file destination": output_location}
     
+def log_recent(log_dir_path:str, output_file_path:str, num_files:int):
+    # Get the first line of the 10 most recent log files
+    log_files = sorted(os.listdir(log_dir_path), key=os.path.getmtime, reverse=True)[:num_files]
+    with open(output_file_path, "w") as outfile:
+        for log_file in log_files:
+            with open(os.path.join(log_dir_path, log_file), "r") as infile:
+                outfile.write(infile.readline())
+    return {"status": "Successfully Created", "output_file destination": output_file_path}
+
+def markdown_index(doc_dir_path:str, output_file_path:str):
+    # Find all Markdown(.md) files in doc_dir_path and for each file, extract the first occurance of each H1(#)
+    # heading and write it to the output_file_path as json format without the prefixpath
+    files = []
+    index_data = {}
+    for root, dirs, files in os.walk(doc_dir_path):
+        for file in files:
+            if file.endswith(".md"):
+                files.append(os.path.join(root, file))
+    with open(output_file_path, "w", encoding="utf-8") as outfile:
+        for file in files:
+            with open(file, "r", encoding="utf-8") as infile:
+                for line in infile:
+                    if line.startswith("# "):
+                        title = line[2:].strip()
+                        relative_path = os.path.relpath(file, doc_dir_path).replace("\\", "/")
+                        index_data[relative_path] = title
+                        break
+    with open(output_file_path, "w", encoding="utf-8") as outfile: 
+        json.dump(index_data, outfile, indent=2)
+    return {"status": "Successfully Created", "output_file destination": output_file_path}
+
+def email_sender(input_location:str, output_location:str):
+    with open(input_location,"rb") as f:
+        text = f.read().decode("utf-8")
+        print(text)
+        print("********"*5)
+    f.close()
+    url = "https://aiproxy.sanand.workers.dev/openai/v1/chat/completions"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {AIPROXY_TOKEN}"
+    }
+    data = {
+        "model": "gpt-4o-mini",
+        "messages": [
+            {
+                "role": "system", 
+                "content": "Extract just the sender's email address from this email and return just the sender's email address."
+            },
+            {
+                "role": "user",
+                "content": text
+            }
+        ]
+    }
+    response = requests.post(url, headers=headers, data=json.dumps(data)).json()
+    print(response)
+    with open(output_location,"w") as f:
+        f.write(response["choices"][0]["message"]["content"].replace(" ",""))
+    f.close()
+    return {"status": "Successfully Created", "output_file destination": output_location}
+        
 
 # Below is the code for OpenAI - Text Extraction from image
 # https://colab.research.google.com/drive/1bK0b1XMrZWImtw01T1w9NGraDkiVi8mS#scrollTo=RR_q1bi8kfHH
@@ -271,22 +445,57 @@ def get_completions_image(input_location:str, output_location:str):
     f.close()
     return {"status": "Successfully Created", "output_file destination": output_location}
 
-def get_similar_comments(input_location:str, output_location:str):
-    with open(input_location,"r") as f:
-        comments = [i.strip() for i in f.readlines()]
-        f.close()
-    model = SentenceTransformer("all-MiniLM-L6-v2")
-    embeddings = model.encode(comments)
-    similarity_mat = cosine_similarity(embeddings)
-    np.fill_diagonal(similarity_mat,0)
-    max_index = int(np.argmax(similarity_mat))
-    i, j = max_index//len(comments), max_index%len(comments)
-    with open(output_location,"w") as g:
-        g.write(comments[i])
-        g.write("\n")
-        g.write(comments[j])
+# def get_similar_comments(input_location:str, output_location:str):
+#     with open(input_location,"r") as f:
+#         comments = [i.strip() for i in f.readlines()]
+#         f.close()
+#     model = SentenceTransformer("all-MiniLM-L6-v2")
+#     embeddings = model.encode(comments)
+#     similarity_mat = cosine_similarity(embeddings)
+#     np.fill_diagonal(similarity_mat,0)
+#     max_index = int(np.argmax(similarity_mat))
+#     i, j = max_index//len(comments), max_index%len(comments)
+#     with open(output_location,"w") as g:
+#         g.write(comments[i])
+#         g.write("\n")
+#         g.write(comments[j])
+#         g.close()
+#     return {"status": "Successfully Created", "output_file destination": output_location}
+
+def get_similar_comments(input_location: str, output_location: str):
+    # Read comments from the input file
+    with open(input_location, "r") as f:
+        comments = [line.strip() for line in f]
+    f.close()
+    # Generate TF-IDF embeddings for the comments
+    vectorizer = TfidfVectorizer()
+    tfidf_matrix = vectorizer.fit_transform(comments)
+    # Calculate cosine similarity matrix
+    similarity_mat = cosine_similarity(tfidf_matrix)
+    np.fill_diagonal(similarity_mat, 0)  # Ignore self-similarity
+    # Find the indices of the maximum similarity score
+    max_index = np.argmax(similarity_mat)
+    i, j = max_index // len(comments), max_index % len(comments)
+    # Write the most similar pair to the output file
+    with open(output_location, "w") as g:
+        g.write(f"{comments[i]}\n{comments[j]}")
         g.close()
     return {"status": "Successfully Created", "output_file destination": output_location}
+
+def query_sql(filename:str, query:str, output_filename:str):
+    if not filename.endswith('.db'):
+        return None
+    conn = sqlite3.connect(filename) if filename.endswith('.db') else duckdb.connect(filename)
+    cur = conn.cursor()
+    cur.execute(query)
+    # result = cur.fetchall()
+    result = cur.fetchone()[0]
+    # If there are no sales, set total_sales to 0
+    result = result if result else 0
+    conn.close()
+    with open(output_filename, 'w') as file:
+        file.write(str(result))
+    return {"status": "Successfully Created", "output_file destination": output_filename}
 
 @app.get("/")
 async def root():
@@ -301,7 +510,7 @@ def read_file(path:str):
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="File not found")
     except Exception as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
     
 @app.post("/run")
 def task_runner(task:str):
@@ -400,6 +609,28 @@ def task_runner(task:str):
             except Exception as ex:
                 raise HTTPException(status_code=500, detail=f"Error sorting contacts: {ex}")
 
+        # For A5
+        elif function_name == "logs_recent":
+            arguments = message['tool_calls'][0]['function']['arguments']
+            log_dir_path = arguments['log_dir_path']
+            output_file_path = arguments['output_file_path']
+            num_files = arguments['num_files']
+            return log_recent(log_dir_path, output_file_path, num_files)
+
+        # For A6
+        elif function_name == "markdown_index":
+            arguments = message['tool_calls'][0]['function']['arguments']
+            doc_dir_path = arguments['doc_dir_path']
+            output_file_path = arguments['output_file_path']
+            return markdown_index(doc_dir_path, output_file_path)
+
+        # For A7
+        elif function_name == "email_sender":
+            arguments = message['tool_calls'][0]['function']['arguments']
+            input_location = arguments['input_location']
+            output_location = arguments['output_location']
+            return email_sender(input_location, output_location)
+
         # For A8
         elif function_name == "get_completions_image":
             arguments = message['tool_calls'][0]['function']['arguments']
@@ -413,6 +644,14 @@ def task_runner(task:str):
             input_location = arguments['input_location']
             output_location = arguments['output_location']
             return get_similar_comments(input_location, output_location)
+
+        # For A10
+        elif function_name == "query_sql":
+            arguments = message['tool_calls'][0]['function']['arguments']
+            filename = arguments['filename']
+            query = arguments['query']
+            output_filename = arguments['output_filename']
+            return query_sql(filename, query, output_filename)
 
         else:
             raise HTTPException(status_code=500, detail=f"Unknown function: {function_name}")
