@@ -1,0 +1,22 @@
+# PODMAN
+# https://chatgpt.com/c/67ae4cac-16a4-8013-854b-cf386b382bc0
+
+podman login docker.io
+
+podman build -t llm_app .
+
+podman exec -it <image_id>
+
+podman images
+
+podman run image_id
+
+podman run -p 5000:8000 image_id # Forwarding 8000 port contents from cointainger to local machine @5000 port
+
+podman ps
+
+podman start cointainer_id
+
+podman run -e AIPROXY_TOKEN=$AIPROXY_TOKEN -p 8000:8000 image_id
+
+podman rmi -f image_id
