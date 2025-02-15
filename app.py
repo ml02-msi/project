@@ -867,7 +867,6 @@ def task_runner(task:str):
         else:
             raise HTTPException(status_code=500, detail=f"Unknown function: {function_name}")
 
-            
     except Exception as ex:
         raise HTTPException(status_code=500, detail=f"Error executing script: {ex}")   
 

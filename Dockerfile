@@ -28,8 +28,6 @@
 # # Command to run the application
 # CMD ["uv", "run", "app.py"]
 
-
-
 ## Multi Stage Build
 
 # # Base image with dependencies only
