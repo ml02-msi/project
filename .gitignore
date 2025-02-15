@@ -2,3 +2,6 @@ AIPROXY_TOKEN
 .env
 __pycache__
 data/
+*.ipynb
+*.txt
+*.json

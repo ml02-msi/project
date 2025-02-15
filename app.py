@@ -14,7 +14,7 @@ from typing import Dict, Any
 import base64
 import numpy as np
 import pandas as pd
-import sqlite3, duckdb
+import sqlite3, duckdb, httpx
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -146,18 +146,15 @@ LOGS_RECENT = {
                 "properties": {
                         "log_dir_path": {
                             "type": "string",
-                            "pattern": r".*/logs",
-                            "default": "/data/logs"
+                            "description": "Path to the directory containing log files",
                         },
                         "output_file_path": {
                             "type": "string",
-                            "pattern": r".*/(.*\.txt)",
-                            "default": "/data/logs-recent.txt"
+                            "description": "Path to the output file to write the log content",
                         },
                         "num_files": {
                             "type": "integer",
-                            "minimum": 1,
-                            "default": 10
+                            "description": "Number of recent log files to retrieve",
                         }
                     }, "required": ["log_dir_path", "output_file_path", "num_files"]
                 }
@@ -269,26 +266,24 @@ QUERY_SQL = {
         "type": "function",
         "function": {
             "name": "query_sql",
-            "description": "Run a SQL query on a database and save the results to a text file.",
+            "description": "Correctly identify the table and the column names of the table and correctly identify the SQL query that has to be run on the table as query.Identify the database file as filename.Identify the output file where the results of the SQL query will be saved as output_filename.",
             "parameters": {
                 "type": "object",
                 "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Write just the SQL query according to the question"
+                    },
                     "filename": {
                         "type": "string",
-                        "pattern": r".*/(.*\.db)",
-                        "default": "/data/ticket-sales.db" 
+                        "description": "Name of the database file to run the SQL query on"
                     },
                     "output_filename": {
                         "type": "string",
-                        "pattern": r".*/(.*\.txt)",
-                        "default": "/data/ticket-sales-gold.txt"
-                    },
-                    "query": {
-                        "type": "string",
-                        "description": "Write just the SQL query to run on the database"
+                        "description": "Name of the output file to save the SQL query results"
                     }
                 },
-                "required": ["filename", "output_filename", "query"],
+                "required": ["query", "filename", "output_filename"],
             }
         }
     }
@@ -339,7 +334,7 @@ def count_days(date: str, input_location:str, output_location:str):
             if not matched:
                 raise HTTPException(status_code=400, detail=f"Invalid date format: {date_str}")
     with open(output_location, "w") as file:
-        file.write(str(count))
+        file.write(str(count)) # .replace('"', ''))
     file.close()
     return Response(content=json.dumps({"status": "Successfully Created", "output_file destination": output_location}),
                     status_code=200,
@@ -404,7 +399,7 @@ def email_sender(input_location:str, output_location:str):
     }
     response = requests.post(url, headers=headers, data=json.dumps(data)).json()
     with open(output_location,"w") as f:
-        f.write(response["choices"][0]["message"]["content"].replace(" ",""))
+        f.write(response["choices"][0]["message"]["content"].replace(" ","").replace('"',''))
     f.close()
     return Response(content=json.dumps({"status": "Successfully Created", "output_file destination": output_location}),
                     status_code=200,
@@ -445,7 +440,7 @@ def get_completions_image(input_location:str, output_location:str):
     }
     response = requests.post(url, headers=headers, data=json.dumps(data)).json()
     with open(output_location,"w") as f:
-        f.write(response["choices"][0]["message"]["content"].replace(" ",""))
+        f.write(str(response["choices"][0]["message"]["content"]))  #.replace(" ",""))
     f.close()
     return Response(content=json.dumps({"status": "Successfully Created", "output_file destination": output_location}),
                     status_code=200,
@@ -468,29 +463,78 @@ def get_completions_image(input_location:str, output_location:str):
 #         g.close()
 #     return {"status": "Successfully Created", "output_file destination": output_location}
 
-def get_similar_comments(input_location: str, output_location: str):
+# def get_similar_comments(input_location: str, output_location: str):
+#     # Read comments from the input file
+#     with open(input_location, "r") as f:
+#         comments = [line.strip() for line in f]
+#     f.close()
+#     # Generate TF-IDF embeddings for the comments
+#     vectorizer = TfidfVectorizer()
+#     tfidf_matrix = vectorizer.fit_transform(comments)
+#     # Calculate cosine similarity matrix
+#     similarity_mat = cosine_similarity(tfidf_matrix)
+#     np.fill_diagonal(similarity_mat, 0)  # Ignore self-similarity
+#     # Find the indices of the maximum similarity score
+#     max_index = np.argmax(similarity_mat)
+#     i, j = max_index // len(comments), max_index % len(comments)
+#     # Write the most similar pair to the output file
+#     with open(output_location, "w") as g:
+#         g.write(f"{comments[i]}\n{comments[j]}")
+#         g.close()
+#     return Response(content=json.dumps({"status": "Successfully Created", "output_file destination": output_location}),
+#                     status_code=200,
+#                     media_type="application/json")
+
+async def get_similar_comments(input_location: str, output_location: str):
     # Read comments from the input file
     with open(input_location, "r") as f:
-        comments = [line.strip() for line in f]
-    f.close()
-    # Generate TF-IDF embeddings for the comments
-    vectorizer = TfidfVectorizer()
-    tfidf_matrix = vectorizer.fit_transform(comments)
+        comments = [line.strip() for line in f if line.strip()]
+    # Generate OpenAI embeddings
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(
+                "https://aiproxy.sanand.workers.dev/openai/v1/embeddings",
+                headers={
+                    "Authorization": f"Bearer {AIPROXY_TOKEN}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "text-embedding-3-small",
+                    "input": comments
+                },
+                timeout=30
+            )
+            response.raise_for_status()
+            embeddings_data = response.json()
+        except httpx.HTTPStatusError as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"OpenAI API error: {e.response.text}"
+            )
+    # Extract and normalize embeddings
+    embeddings = np.array([item['embedding'] for item in embeddings_data['data']])
     # Calculate cosine similarity matrix
-    similarity_mat = cosine_similarity(tfidf_matrix)
-    np.fill_diagonal(similarity_mat, 0)  # Ignore self-similarity
-    # Find the indices of the maximum similarity score
-    max_index = np.argmax(similarity_mat)
-    i, j = max_index // len(comments), max_index % len(comments)
-    # Write the most similar pair to the output file
-    with open(output_location, "w") as g:
-        g.write(f"{comments[i]}\n{comments[j]}")
-        g.close()
-    return Response(content=json.dumps({"status": "Successfully Created", "output_file destination": output_location}),
-                    status_code=200,
-                    media_type="application/json")
+    similarity = np.dot(embeddings, embeddings.T)
+    np.fill_diagonal(similarity, -np.inf)  # Ignore self-similarity
+    # Find indices of maximum similarity
+    max_index = np.argmax(similarity)
+    i, j = np.unravel_index(max_index, similarity.shape)
+    # Sort the pair alphabetically before writing
+    sorted_pair = sorted([comments[i], comments[j]])
+    # Write to output file
+    with open(output_location, "w") as f:
+        f.write("\n".join(sorted_pair))
+    return Response(
+        content=json.dumps({
+            "status": "Success",
+            "pair_found": sorted_pair,
+            "similarity_score": float(similarity[i, j])
+        }),
+        status_code=200,
+        media_type="application/json"
+    )
 
-def query_sql(filename:str, query:str, output_filename:str):
+def query_sql(response, filename:str, query:str, output_filename:str):
     if not filename.endswith('.db'):
         return None
     conn = sqlite3.connect(filename) if filename.endswith('.db') else duckdb.connect(filename)
@@ -500,10 +544,12 @@ def query_sql(filename:str, query:str, output_filename:str):
     result = cur.fetchone()[0]
     # If there are no sales, set total_sales to 0
     result = result if result else 0
+    # Make the result value upto two-decimal
+    result = round(result, 2)
     conn.close()
     with open(output_filename, 'w') as file:
-        file.write(str(result))
-    return Response(content=json.dumps({"status": "Successfully Created", "output_file destination": output_filename}),
+        file.write(int(result))
+    return Response(content=json.dumps({"status": "Successfully Created", "output_file destination": output_filename, "response" : response.json()}),
                     status_code=200,
                     media_type="application/json")
 
@@ -544,7 +590,12 @@ def task_runner(task:str):
 - Use format_file for formatting files with Prettier
 - Use task_runner for tasks involving writing a code
 - Use sort_contacts for sorting contacts in a JSON file by last name and then by first name
-- Use get_completions_image to run the get_completions_image function and save output to a file"""
+- Use get_completions_image to run the get_completions_image function and save output to a file
+- Use email_sender to run the email_sender function and save output to a file
+- Use get_similar_comments to run the get_similar_comments function and save output to a file
+- Use query_sql to run a SQL query and save the result to a file
+- Use logs_recent to retrieve the most recent log files from a directory and save their content to an output file
+- Use markdown_index to index the contents of a directory and save the index to a file"""
             }
         ],
         "tools": tools,
@@ -611,12 +662,11 @@ def task_runner(task:str):
             command = [
                 "npx", 
                 f"prettier@{version}",
-                "--write",
-                "--no-config",  # Ensure no local config interferes
+                "-w",
                 path
             ]
             try:
-                result = subprocess.run(command, capture_output=True, text=True, check=True)
+                result = subprocess.run(command, capture_output=True, text=True, check=True, shell = True)
                 return Response(
                         content=json.dumps({"output": result.stdout}),
                         status_code=200,
@@ -645,22 +695,28 @@ def task_runner(task:str):
         # For A4
         elif function_name == "sort_contacts":
             raw_arguments = message['tool_calls'][0]['function']['arguments']
-            if isinstance(raw_arguments, str):
-                arguments = json.loads(raw_arguments)
-            else:
-                arguments = raw_arguments
-            input_file_path = arguments['input_file_path']
-            output_file_path = arguments['output_file_path']
+            # Parse and validate arguments
+            arguments = json.loads(raw_arguments) if isinstance(raw_arguments, str) else raw_arguments
+            # Check required parameters exist
+            if 'input_path' not in arguments or 'output_path' not in arguments:
+                missing = [k for k in ['input_path', 'output_path'] if k not in arguments]
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Missing parameters: {', '.join(missing)}"
+                )
+            input_file_path = arguments['input_path']
+            output_file_path = arguments['output_path']
             try:
                 with open(input_file_path, "r") as f:
                     contacts = json.load(f)
-                sorted_contacts = sorted(
-                    contacts, key=lambda contact: (contact.get("last_name", ""), contact.get("first_name", ""))
-                )
+                # sorted_contacts = sorted(
+                #     contacts, key=lambda contact: (contact.get("last_name", ""), contact.get("first_name", ""))
+                # )
+                contacts.sort(key=lambda c: (c["last_name"], c["first_name"]))
                 with open(output_file_path, "w") as f:
-                    json.dump(sorted_contacts, f, indent=2)
+                    json.dump(contacts, f) # changed to contacts
                 return Response(
-                    content=json.dumps({"message": "Contacts sorted successfully", "sorted_count": len(sorted_contacts)}),
+                    content=json.dumps({"message": "Contacts sorted successfully", "sorted_count": len(contacts)}),
                     status_code=200,
                     media_type="application/json")
             except FileNotFoundError:
@@ -734,7 +790,7 @@ def task_runner(task:str):
             filename = arguments['filename']
             query = arguments['query']
             output_filename = arguments['output_filename']
-            return query_sql(filename, query, output_filename)
+            return query_sql(response.json(), filename, query, output_filename)
 
         else:
             raise HTTPException(status_code=500, detail=f"Unknown function: {function_name}")

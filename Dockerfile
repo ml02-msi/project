@@ -41,6 +41,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl ca-certificates nodejs npm && rm -rf /var/lib/apt/lists/*
 
 # Install Prettier globally
+# Install Prettier with proper path handling
 RUN npm install -g prettier@3.4.2
 
 # Install Python dependencies
