@@ -35,22 +35,22 @@
 # Base image with dependencies only
 FROM python:3.10-slim AS base
 WORKDIR /app
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl ca-certificates && rm -rf /var/lib/apt/lists/*
-# RUN pip install --no-cache-dir fastapi numpy pandas sentence-transformers \
-#     scikit-learn requests python-dateutil python-dotenv uvicorn
 
+# Install required system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl ca-certificates nodejs npm && rm -rf /var/lib/apt/lists/*
+
+# Install Prettier globally
+RUN npm install -g prettier@3.4.2
+
+# Install Python dependencies
 RUN pip install --no-cache-dir fastapi numpy pandas \
     scikit-learn requests python-dateutil python-dotenv uvicorn \
-    db-sqlite3 duckdb
+    db-sqlite3 duckdb Faker pillow httpx
 
-# # Download the latest installer
+# Download and install UV
 ADD https://astral.sh/uv/install.sh /uv-installer.sh
-
-# # Run the installer then remove it
 RUN sh /uv-installer.sh && rm /uv-installer.sh
-
-# # Ensure the installed binary is on the `PATH`
 ENV PATH="/root/.local/bin/:$PATH"
 
 # Final image with app.py (uses cached dependencies)
@@ -58,4 +58,8 @@ FROM base AS final
 WORKDIR /app
 RUN mkdir -p /data
 COPY app.py datagen.py evaluate.py /app/
+
+# Verify installation
+RUN node -v && npm -v && npx prettier --version
+
 CMD ["uv", "run", "app.py"]

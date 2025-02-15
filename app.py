@@ -1,7 +1,7 @@
 # https://www.datacamp.com/tutorial/open-ai-function-calling-tutorial
 
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 import os
 import requests
@@ -52,9 +52,9 @@ SCRIPT_RUNNER = {
                     "args": {
                         "type": "array",
                         "items": {
-                            "type": "string"
-                        },
-                        "description": "List of arguments to pass to the script"
+                            "type": "string",
+                            "description": "List of arguments to pass to the script"
+                            },
                     },   
 
                 }, "required": ["script_url", "args"]
@@ -341,7 +341,9 @@ def count_days(date: str, input_location:str, output_location:str):
     with open(output_location, "w") as file:
         file.write(str(count))
     file.close()
-    return {"status": "Successfully Created", "output_file destination": output_location}
+    return Response(content=json.dumps({"status": "Successfully Created", "output_file destination": output_location}),
+                    status_code=200,
+                    media_type="application/json")
     
 def log_recent(log_dir_path:str, output_file_path:str, num_files:int):
     # Get the first line of the 10 most recent log files
@@ -350,7 +352,9 @@ def log_recent(log_dir_path:str, output_file_path:str, num_files:int):
         for log_file in log_files:
             with open(os.path.join(log_dir_path, log_file), "r") as infile:
                 outfile.write(infile.readline())
-    return {"status": "Successfully Created", "output_file destination": output_file_path}
+    return Response(content=json.dumps({"status": "Successfully Created", "output_file destination": output_file_path}),
+                    status_code=200,
+                    media_type="application/json")
 
 def markdown_index(doc_dir_path:str, output_file_path:str):
     # Find all Markdown(.md) files in doc_dir_path and for each file, extract the first occurance of each H1(#)
@@ -372,13 +376,13 @@ def markdown_index(doc_dir_path:str, output_file_path:str):
                         break
     with open(output_file_path, "w", encoding="utf-8") as outfile: 
         json.dump(index_data, outfile, indent=2)
-    return {"status": "Successfully Created", "output_file destination": output_file_path}
+    return Response(content=json.dumps({"status": "Successfully Created", "output_file destination": output_file_path}),
+                    status_code=200,
+                    media_type="application/json")
 
 def email_sender(input_location:str, output_location:str):
     with open(input_location,"rb") as f:
         text = f.read().decode("utf-8")
-        print(text)
-        print("********"*5)
     f.close()
     url = "https://aiproxy.sanand.workers.dev/openai/v1/chat/completions"
     headers = {
@@ -399,12 +403,12 @@ def email_sender(input_location:str, output_location:str):
         ]
     }
     response = requests.post(url, headers=headers, data=json.dumps(data)).json()
-    print(response)
     with open(output_location,"w") as f:
         f.write(response["choices"][0]["message"]["content"].replace(" ",""))
     f.close()
-    return {"status": "Successfully Created", "output_file destination": output_location}
-        
+    return Response(content=json.dumps({"status": "Successfully Created", "output_file destination": output_location}),
+                    status_code=200,
+                    media_type="application/json")        
 
 # Below is the code for OpenAI - Text Extraction from image
 # https://colab.research.google.com/drive/1bK0b1XMrZWImtw01T1w9NGraDkiVi8mS#scrollTo=RR_q1bi8kfHH
@@ -443,7 +447,9 @@ def get_completions_image(input_location:str, output_location:str):
     with open(output_location,"w") as f:
         f.write(response["choices"][0]["message"]["content"].replace(" ",""))
     f.close()
-    return {"status": "Successfully Created", "output_file destination": output_location}
+    return Response(content=json.dumps({"status": "Successfully Created", "output_file destination": output_location}),
+                    status_code=200,
+                    media_type="application/json")
 
 # def get_similar_comments(input_location:str, output_location:str):
 #     with open(input_location,"r") as f:
@@ -480,7 +486,9 @@ def get_similar_comments(input_location: str, output_location: str):
     with open(output_location, "w") as g:
         g.write(f"{comments[i]}\n{comments[j]}")
         g.close()
-    return {"status": "Successfully Created", "output_file destination": output_location}
+    return Response(content=json.dumps({"status": "Successfully Created", "output_file destination": output_location}),
+                    status_code=200,
+                    media_type="application/json")
 
 def query_sql(filename:str, query:str, output_filename:str):
     if not filename.endswith('.db'):
@@ -495,7 +503,9 @@ def query_sql(filename:str, query:str, output_filename:str):
     conn.close()
     with open(output_filename, 'w') as file:
         file.write(str(result))
-    return {"status": "Successfully Created", "output_file destination": output_filename}
+    return Response(content=json.dumps({"status": "Successfully Created", "output_file destination": output_filename}),
+                    status_code=200,
+                    media_type="application/json")
 
 @app.get("/")
 async def root():
@@ -570,31 +580,77 @@ def task_runner(task:str):
             script_url = func_args['script_url']
             email = func_args['args'][0]
             command = ["uv","run",script_url, email]
-            result = subprocess.run(command, capture_output=True, text=True, check=True)
-            return {"output": result.stdout, "error": result.stderr}
+            try:
+                result = subprocess.run(command, capture_output=True, text=True, check=True)
+                return Response(
+                        content=json.dumps({"output": result.stdout}),
+                        status_code=200,
+                        media_type="application/json"
+                    )
+            except subprocess.CalledProcessError as e:
+                raise HTTPException(
+                        status_code=400,
+                        detail=f"Script execution failed: {e.stderr or e.stdout}"
+                )
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Unknown error: {str(e)}")
 
         # For A2
         elif function_name == "format_file":
-            arguments = message['tool_calls'][0]['function']['arguments']
+            raw_arguments = message['tool_calls'][0]['function']['arguments']
+            if isinstance(raw_arguments, str):
+                arguments = json.loads(raw_arguments)
+            else:
+                arguments = raw_arguments
             path = arguments['path']
             version = arguments['prettier_version']
             # Checking if the file exists
             if not os.path.exists(path):
                     raise HTTPException(status_code=400, detail=f"File not found: {path}")
-            command = ["npx", f"prettier@{version}", "--write", path]
-            result = subprocess.run(command, capture_output=True, text=True, check=True)
-            return {"output": result.stdout, "error": result.stderr}
+            # Use proper formatting command
+            command = [
+                "npx", 
+                f"prettier@{version}",
+                "--write",
+                "--no-config",  # Ensure no local config interferes
+                path
+            ]
+            try:
+                result = subprocess.run(command, capture_output=True, text=True, check=True)
+                return Response(
+                        content=json.dumps({"output": result.stdout}),
+                        status_code=200,
+                        media_type="application/json"
+                    )
+            except subprocess.CalledProcessError as e:
+                raise HTTPException(
+                        status_code=400,
+                        detail=f"Script execution failed: {e.stderr or e.stdout}"
+                )
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Formatter error: {str(e)}")
 
         # For A3
         elif function_name == "count_days":
-            arguments = message['tool_calls'][0]['function']['arguments']
-            start_date = arguments['day of week']
+            raw_arguments = message['tool_calls'][0]['function']['arguments']
+            if isinstance(raw_arguments, str):
+                arguments = json.loads(raw_arguments)
+            else:
+                arguments = raw_arguments
+            day = arguments['day_of_week']
             input_file_path = arguments['input_file_path']
             output_file_path = arguments['output_file_path']
-            return count_days(start_date, input_file_path, output_file_path)
+            return count_days(day, input_file_path, output_file_path)
 
         # For A4
         elif function_name == "sort_contacts":
+            raw_arguments = message['tool_calls'][0]['function']['arguments']
+            if isinstance(raw_arguments, str):
+                arguments = json.loads(raw_arguments)
+            else:
+                arguments = raw_arguments
+            input_file_path = arguments['input_file_path']
+            output_file_path = arguments['output_file_path']
             try:
                 with open(input_file_path, "r") as f:
                     contacts = json.load(f)
@@ -603,15 +659,22 @@ def task_runner(task:str):
                 )
                 with open(output_file_path, "w") as f:
                     json.dump(sorted_contacts, f, indent=2)
-                return {"message": "Contacts sorted successfully", "sorted_count": len(sorted_contacts)}
+                return Response(
+                    content=json.dumps({"message": "Contacts sorted successfully", "sorted_count": len(sorted_contacts)}),
+                    status_code=200,
+                    media_type="application/json")
             except FileNotFoundError:
-                raise HTTPException(status_code=404, detail="Contacts file not found")
+                raise HTTPException(status_code=400, detail="Contacts file not found")
             except Exception as ex:
                 raise HTTPException(status_code=500, detail=f"Error sorting contacts: {ex}")
 
         # For A5
         elif function_name == "logs_recent":
-            arguments = message['tool_calls'][0]['function']['arguments']
+            raw_arguments = message['tool_calls'][0]['function']['arguments']
+            if isinstance(raw_arguments, str):
+                arguments = json.loads(raw_arguments)
+            else:
+                arguments = raw_arguments
             log_dir_path = arguments['log_dir_path']
             output_file_path = arguments['output_file_path']
             num_files = arguments['num_files']
@@ -619,35 +682,55 @@ def task_runner(task:str):
 
         # For A6
         elif function_name == "markdown_index":
-            arguments = message['tool_calls'][0]['function']['arguments']
+            raw_arguments = message['tool_calls'][0]['function']['arguments']
+            if isinstance(raw_arguments, str):
+                arguments = json.loads(raw_arguments)
+            else:
+                arguments = raw_arguments
             doc_dir_path = arguments['doc_dir_path']
             output_file_path = arguments['output_file_path']
             return markdown_index(doc_dir_path, output_file_path)
 
         # For A7
         elif function_name == "email_sender":
-            arguments = message['tool_calls'][0]['function']['arguments']
+            raw_arguments = message['tool_calls'][0]['function']['arguments']
+            if isinstance(raw_arguments, str):
+                arguments = json.loads(raw_arguments)
+            else:
+                arguments = raw_arguments
             input_location = arguments['input_location']
             output_location = arguments['output_location']
             return email_sender(input_location, output_location)
 
         # For A8
         elif function_name == "get_completions_image":
-            arguments = message['tool_calls'][0]['function']['arguments']
+            raw_arguments = message['tool_calls'][0]['function']['arguments']
+            if isinstance(raw_arguments, str):
+                arguments = json.loads(raw_arguments)
+            else:
+                arguments = raw_arguments
             input_location = arguments['input_location']
             output_location = arguments['output_location']
             return get_completions_image(input_location, output_location)
 
         # For A9
         elif function_name == "get_similar_comments":
-            arguments = message['tool_calls'][0]['function']['arguments']
+            raw_arguments = message['tool_calls'][0]['function']['arguments']
+            if isinstance(raw_arguments, str):
+                arguments = json.loads(raw_arguments)
+            else:
+                arguments = raw_arguments
             input_location = arguments['input_location']
             output_location = arguments['output_location']
             return get_similar_comments(input_location, output_location)
 
         # For A10
         elif function_name == "query_sql":
-            arguments = message['tool_calls'][0]['function']['arguments']
+            raw_arguments = message['tool_calls'][0]['function']['arguments']
+            if isinstance(raw_arguments, str):
+                arguments = json.loads(raw_arguments)
+            else:
+                arguments = raw_arguments
             filename = arguments['filename']
             query = arguments['query']
             output_filename = arguments['output_filename']
